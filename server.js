@@ -176,7 +176,7 @@ app.get('/api/stats', adminOnly, (_req, res) => {
 });
 
 app.get('/admin', (_req, res) => res.sendFile(path.join(ROOT, 'public', 'admin.html')));
-app.get('*', (_req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
+app.get(/.*/, (_req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
 
 app.use((err, _req, res, _next) => {
   console.error(err);
