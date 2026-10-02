@@ -1,11 +1,7 @@
 {
   "name": "ghir9elbl7aba-shop",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {"start": "node server.js"},
-  "engines": {"node": ">=20"},
-  "dependencies": {
-    "express": "^5.1.0",
-    "multer": "^2.0.2"
-  }
+  "dependencies": {"express": "^5.1.0", "multer": "^2.0.2"}
 }

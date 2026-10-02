@@ -1,186 +1,120 @@
 const express = require('express');
-const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'CHANGE-ME';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'CHANGE-ME-NOW';
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
-const UPLOAD_DIR = path.join(ROOT, 'public', 'uploads');
-const DB_FILE = path.join(DATA_DIR, 'store.json');
-
+const DATA_FILE = path.join(DATA_DIR, 'store.json');
+const PUBLIC_DIR = path.join(ROOT, 'public');
+const UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-function loadStore() {
-  if (!fs.existsSync(DB_FILE)) {
-    const initial = { products: [], orders: [], nextProductId: 1, nextOrderId: 1 };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
-    return initial;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  } catch {
-    return { products: [], orders: [], nextProductId: 1, nextOrderId: 1 };
-  }
+function readStore() {
+  if (!fs.existsSync(DATA_FILE)) return { products: [], orders: [] };
+  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); }
+  catch { return { products: [], orders: [] }; }
 }
-function saveStore(store) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(store, null, 2));
+function writeStore(store) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
 }
-let store = loadStore();
+let store = readStore();
+if (!Array.isArray(store.products)) store.products = [];
+if (!Array.isArray(store.orders)) store.orders = [];
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(ROOT, 'public')));
+app.use(express.static(PUBLIC_DIR));
 
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
     filename: (_req, file, cb) => {
       const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
-      cb(null, `${Date.now()}-${crypto.randomBytes(5).toString('hex')}${ext}`);
+      cb(null, Date.now() + '-' + Math.random().toString(36).slice(2, 8) + ext);
     }
   }),
   limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) cb(null, true);
-    else cb(new Error('Only image files are allowed'));
-  }
+  fileFilter: (_req, file, cb) => cb(null, /^image\/(jpeg|png|webp|gif)$/.test(file.mimetype))
 });
 
-function adminOnly(req, res, next) {
-  const supplied = req.get('x-admin-password') || req.body.adminPassword || req.query.adminPassword;
-  if (!supplied || supplied !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+function admin(req, res, next) {
+  if (req.get('x-admin-password') !== ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
+function nextId(list) { return list.reduce((m, x) => Math.max(m, Number(x.id) || 0), 0) + 1; }
+function orderNo() { return 'GHL-' + Date.now().toString().slice(-8); }
 
-function cleanProduct(p) {
-  return { ...p, price: Number(p.price), stock: Number(p.stock) };
-}
-function orderNumber(id) {
-  return `GHL-${String(id).padStart(6, '0')}`;
-}
-
-app.get('/api/products', (_req, res) => {
-  res.json(store.products.filter(p => p.stock > 0).map(cleanProduct));
+app.get('/api/products', (_req, res) => res.json(store.products.filter(p => Number(p.stock) > 0)));
+app.get('/api/products/all', admin, (_req, res) => res.json(store.products));
+app.get('/api/stats', admin, (_req, res) => {
+  const revenue = store.orders.filter(o => o.status !== 'cancelled').reduce((s,o) => s + Number(o.total || 0), 0);
+  res.json({ products: store.products.length, available: store.products.filter(p => Number(p.stock)>0).length, orders: store.orders.length, revenue });
 });
+app.get('/api/orders', admin, (_req, res) => res.json([...store.orders].reverse()));
 
-app.get('/api/products/all', adminOnly, (_req, res) => {
-  res.json(store.products.map(cleanProduct));
-});
-
-app.post('/api/products', adminOnly, upload.single('image'), (req, res) => {
-  const { brand = '', name, category = 'Other', size = '', price, stock = 1, description = '' } = req.body;
-  if (!name || price === undefined || Number.isNaN(Number(price))) {
-    return res.status(400).json({ error: 'Name and valid price are required' });
-  }
-  const product = {
-    id: store.nextProductId++,
-    brand: String(brand).trim(),
-    name: String(name).trim(),
-    category: String(category).trim() || 'Other',
-    size: String(size).trim(),
-    price: Number(price),
-    stock: Math.max(0, Number(stock) || 0),
-    image: req.file ? `/uploads/${req.file.filename}` : '',
-    description: String(description).trim()
+app.post('/api/products', admin, upload.single('image'), (req, res) => {
+  const p = {
+    id: nextId(store.products),
+    brand: String(req.body.brand || '').trim(),
+    name: String(req.body.name || '').trim(),
+    category: String(req.body.category || 'Vintage').trim(),
+    size: String(req.body.size || '').trim(),
+    price: Number(req.body.price || 0),
+    stock: Number(req.body.stock || 1),
+    image: req.file ? '/uploads/' + req.file.filename : String(req.body.image || '').trim(),
+    description: String(req.body.description || '').trim()
   };
-  store.products.push(product);
-  saveStore(store);
-  res.status(201).json(product);
+  if (!p.name || p.price <= 0 || p.stock < 0) return res.status(400).json({ error: 'Name, price and stock are required.' });
+  store.products.push(p); writeStore(store); res.json(p);
 });
 
-app.patch('/api/products/:id', adminOnly, (req, res) => {
-  const id = Number(req.params.id);
-  const p = store.products.find(x => x.id === id);
+app.patch('/api/products/:id', admin, (req, res) => {
+  const p = store.products.find(x => x.id === Number(req.params.id));
   if (!p) return res.status(404).json({ error: 'Product not found' });
-  const allowed = ['brand', 'name', 'category', 'size', 'description'];
-  for (const key of allowed) if (req.body[key] !== undefined) p[key] = String(req.body[key]);
-  if (req.body.price !== undefined) p.price = Number(req.body.price);
-  if (req.body.stock !== undefined) p.stock = Math.max(0, Number(req.body.stock) || 0);
-  saveStore(store);
-  res.json(cleanProduct(p));
+  for (const key of ['brand','name','category','size','description','image']) if (req.body[key] !== undefined) p[key] = String(req.body[key]);
+  for (const key of ['price','stock']) if (req.body[key] !== undefined) p[key] = Number(req.body[key]);
+  writeStore(store); res.json(p);
 });
-
-app.delete('/api/products/:id', adminOnly, (req, res) => {
-  const id = Number(req.params.id);
-  const i = store.products.findIndex(x => x.id === id);
-  if (i < 0) return res.status(404).json({ error: 'Product not found' });
-  store.products.splice(i, 1);
-  saveStore(store);
-  res.json({ ok: true });
+app.delete('/api/products/:id', admin, (req, res) => {
+  const id = Number(req.params.id); const before = store.products.length;
+  store.products = store.products.filter(x => x.id !== id); writeStore(store);
+  res.json({ ok: store.products.length < before });
 });
 
 app.post('/api/orders', (req, res) => {
-  const { customer_name, phone, wilaya, commune, address, delivery = 'home', items } = req.body || {};
-  if (!customer_name || !phone || !wilaya || !commune || !address || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'Please complete all required fields and add at least one item.' });
-  }
-  const requested = new Map();
-  for (const item of items) {
-    const id = Number(item.product_id);
-    const qty = Math.max(1, Number(item.qty) || 1);
-    requested.set(id, (requested.get(id) || 0) + qty);
-  }
-  const orderItems = [];
+  const body = req.body || {};
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (!body.customer_name || !body.phone || !body.wilaya || !body.commune || !body.address || !items.length) return res.status(400).json({ error: 'Please complete all required fields.' });
+  const checked = [];
   let total = 0;
-  for (const [id, qty] of requested.entries()) {
-    const p = store.products.find(x => x.id === id);
-    if (!p) return res.status(400).json({ error: 'One of the products is no longer available.' });
-    if (p.stock < qty) return res.status(409).json({ error: `Stock insuffisant pour ${p.name}.` });
-    orderItems.push({ product_id: p.id, name: p.name, size: p.size, price: p.price, qty });
+  for (const it of items) {
+    const p = store.products.find(x => x.id === Number(it.product_id));
+    const qty = Math.max(1, Number(it.qty || 1));
+    if (!p) return res.status(400).json({ error: 'A product is no longer available.' });
+    if (Number(p.stock) < qty) return res.status(409).json({ error: `Stock insuffisant: ${p.name}` });
+    checked.push({ product_id: p.id, name: p.name, size: p.size, price: p.price, qty });
     total += p.price * qty;
   }
-  for (const item of orderItems) {
-    const p = store.products.find(x => x.id === item.product_id);
-    p.stock -= item.qty;
-  }
-  const id = store.nextOrderId++;
-  const order = {
-    id,
-    order_no: orderNumber(id),
-    customer_name: String(customer_name).trim(),
-    phone: String(phone).trim(),
-    wilaya: String(wilaya).trim(),
-    commune: String(commune).trim(),
-    address: String(address).trim(),
-    delivery: String(delivery),
-    total,
-    status: 'new',
-    created_at: new Date().toISOString(),
-    items: orderItems
-  };
-  store.orders.unshift(order);
-  saveStore(store);
-  res.status(201).json({ order_no: order.order_no, total, status: order.status });
+  checked.forEach(it => { const p = store.products.find(x => x.id === it.product_id); p.stock -= it.qty; });
+  const order = { id: nextId(store.orders), order_no: orderNo(), customer_name: String(body.customer_name), phone: String(body.phone), wilaya: String(body.wilaya), commune: String(body.commune), address: String(body.address), delivery: String(body.delivery || 'Livraison'), total, status: 'new', items: checked, created_at: new Date().toISOString() };
+  store.orders.push(order); writeStore(store); res.json({ ok: true, order_no: order.order_no, total });
+});
+app.patch('/api/orders/:id', admin, (req, res) => {
+  const o = store.orders.find(x => x.id === Number(req.params.id));
+  if (!o) return res.status(404).json({ error: 'Order not found' });
+  if (req.body.status) o.status = String(req.body.status);
+  writeStore(store); res.json(o);
 });
 
-app.get('/api/orders', adminOnly, (_req, res) => res.json(store.orders));
-
-app.patch('/api/orders/:id', adminOnly, (req, res) => {
-  const order = store.orders.find(x => x.id === Number(req.params.id));
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-  const allowed = ['new', 'confirmed', 'shipped', 'completed', 'cancelled'];
-  if (!allowed.includes(req.body.status)) return res.status(400).json({ error: 'Invalid status' });
-  order.status = req.body.status;
-  saveStore(store);
-  res.json(order);
+app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-app.get('/api/stats', adminOnly, (_req, res) => {
-  const revenue = store.orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + Number(o.total || 0), 0);
-  res.json({ products: store.products.length, available: store.products.reduce((s, p) => s + Number(p.stock || 0), 0), orders: store.orders.length, revenue });
-});
-
-app.get('/admin', (_req, res) => res.sendFile(path.join(ROOT, 'public', 'admin.html')));
-app.get(/.*/, (_req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
-
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(400).json({ error: err.message || 'Request failed' });
-});
-
-app.listen(PORT, '0.0.0.0', () => console.log(`Ghir9elbl7aba shop listening on port ${PORT}`));
+app.listen(PORT, () => console.log('Ghir9elbl7aba shop listening on ' + PORT));
