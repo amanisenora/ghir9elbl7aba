@@ -1,14 +1,12 @@
-# GHIR9ELBL7ABA Shop
+# GHIR9ELBL7ABA Shop v3
 
-Node.js + Express thrift/vintage shop with direct orders and admin dashboard.
+Real direct-order thrift/vintage shop for Render.
 
 ## Render
 - Build Command: `npm install`
 - Start Command: `npm start`
-- Node: compatible with current Render Node runtimes.
-- Required env var: `ADMIN_PASSWORD` (set your own strong password).
+- Environment variable: `ADMIN_PASSWORD` = choose a private password.
 
-Open the service URL after deployment. `/admin` is the admin dashboard.
+Open `/admin.html` to manage products and orders.
 
-## Important
-This starter stores products/orders in `data/store.json` on the local filesystem. Render web-service disks are ephemeral unless a persistent disk is configured. For a production store, connect a persistent database (Postgres/Supabase/etc.) before relying on it for permanent orders.
+Important: this version stores data in `data/store.json` and uploads in `public/uploads`. On Render's free ephemeral filesystem, data can be lost after a rebuild/redeploy. For permanent production data, connect a persistent database/storage before launch.
