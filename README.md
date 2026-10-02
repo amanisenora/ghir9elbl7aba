@@ -1,9 +1,14 @@
 # GHIR9ELBL7ABA Shop
 
+Node.js + Express thrift/vintage shop with direct orders and admin dashboard.
+
 ## Render
 - Build Command: `npm install`
 - Start Command: `npm start`
-- Add environment variable: `ADMIN_PASSWORD` = a private password.
-- After deploy, the shop is at the Render URL and admin is at `/admin`.
+- Node: compatible with current Render Node runtimes.
+- Required env var: `ADMIN_PASSWORD` (set your own strong password).
 
-This version includes a public shop, direct checkout, stock control, image upload, and admin orders. The JSON data folder is persistent only when the host provides persistent storage; for production, use a persistent disk or database.
+Open the service URL after deployment. `/admin` is the admin dashboard.
+
+## Important
+This starter stores products/orders in `data/store.json` on the local filesystem. Render web-service disks are ephemeral unless a persistent disk is configured. For a production store, connect a persistent database (Postgres/Supabase/etc.) before relying on it for permanent orders.

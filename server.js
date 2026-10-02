@@ -112,9 +112,9 @@ app.patch('/api/orders/:id', admin, (req, res) => {
 });
 
 app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
-app.get('*', (req, res) => {
+app.use((req, res, next) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'), err => { if (err) next(err); });
 });
 
 app.listen(PORT, () => console.log('Ghir9elbl7aba shop listening on ' + PORT));
