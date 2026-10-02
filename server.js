@@ -9,8 +9,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'CHANGE-ME-NOW';
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'store.json');
-const PUBLIC_DIR = path.join(ROOT, 'public');
-const UPLOAD_DIR = path.join(PUBLIC_DIR, 'uploads');
+const PUBLIC_DIR = ROOT;
+const UPLOAD_DIR = path.join(ROOT, 'uploads');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -111,10 +111,10 @@ app.patch('/api/orders/:id', admin, (req, res) => {
   writeStore(store); res.json(o);
 });
 
-app.get('/admin', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
+app.get('/admin', (_req, res) => res.sendFile(path.join(ROOT, 'admin.html')));
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Not found' });
-  res.sendFile(path.join(PUBLIC_DIR, 'index.html'), err => { if (err) next(err); });
+  res.sendFile(path.join(ROOT, 'index.html'), err => { if (err) next(err); });
 });
 
 app.listen(PORT, () => console.log('Ghir9elbl7aba shop listening on ' + PORT));
